@@ -19,7 +19,7 @@
 # THE SOFTWARE.
 
 import json
-import urllib2
+import requests
 import operator
 
 from django import forms
@@ -32,15 +32,15 @@ import sentry_mattermost
 
 def get_project_full_name(project):
     if project.team.name not in project.name:
-        return '%s %s' % (project.team.name, project.name)
+        return "%s %s" % (project.team.name, project.name)
     return project.name
 
 
 def get_rules(notification, group, project):
     rules = []
     for rule in notification.rules:
-        rules.append(rule.label.encode('utf-8'))
-    return ', '.join('%s' % r for r in rules)
+        rules.append(rule.label.encode("utf-8"))
+    return ", ".join("%s" % r for r in rules)
 
 
 def get_tags(event):
@@ -48,8 +48,10 @@ def get_tags(event):
     if not tag_list:
         return ()
 
-    return ((tagstore.get_tag_key_label(k), tagstore.get_tag_value_label(k, v)) 
-            for k, v in tag_list)
+    return (
+        (tagstore.get_tag_key_label(k), tagstore.get_tag_value_label(k, v))
+        for k, v in tag_list
+    )
 
 
 class PayloadFactory:
@@ -65,67 +67,66 @@ class PayloadFactory:
         project = group.project
 
         params = {
-            "title": group.message_short.encode('utf-8'),
+            "title": group.message_short.encode("utf-8"),
             "link": group.get_absolute_url(),
-            "culprit": group.culprit.encode('utf-8'),
-            "project": get_project_full_name(project).encode('utf-8')
+            "culprit": group.culprit.encode("utf-8"),
+            "project": get_project_full_name(project).encode("utf-8"),
         }
 
-        if plugin.get_option('include_rules', project):
+        if plugin.get_option("include_rules", project):
             params["rules"] = get_rules(notification, group, project)
 
-        if plugin.get_option('include_tags', project):
+        if plugin.get_option("include_tags", project):
             params["tags"] = get_tags(event)
 
         text = cls.render_text(params)
 
         payload = {
             "username": "Sentry",
-            "icon_url": "https://myovchev.github.io/sentry-slack/images/logo32.png", #noqa
-            "text": text
+            "icon_url": "https://myovchev.github.io/sentry-slack/images/logo32.png",  # noqa
+            "text": text,
         }
         return payload
 
 
 def request(url, payload):
     data = "payload=" + json.dumps(payload)
-    req = urllib2.Request(url, data)
-    response = urllib2.urlopen(req)
+    response = requests.post(url=url, json=data)
     return response.read()
 
 
 class MattermostOptionsForm(notify.NotificationConfigurationForm):
     webhook = forms.URLField(
-        help_text='Incoming Webhook URL',
-        widget=forms.URLInput(attrs={'class': 'span8'})
+        help_text="Incoming Webhook URL",
+        widget=forms.URLInput(attrs={"class": "span8"}),
     )
     include_rules = forms.BooleanField(
-        help_text='Include triggering rules with notifications',
+        help_text="Include triggering rules with notifications",
         required=False,
     )
     include_tags = forms.BooleanField(
-        help_text='Include tags with notifications',
+        help_text="Include tags with notifications",
         required=False,
     )
 
 
 class Mattermost(notify.NotificationPlugin):
-    title = 'Mattermost'
-    slug = 'mattermost'
-    description = 'Enables notifications for Mattermost Open Source Chat'
+    title = "Mattermost"
+    slug = "mattermost"
+    description = "Enables notifications for Mattermost Open Source Chat"
     version = sentry_mattermost.VERSION
-    author = 'Andre Freitas <andre.freitas@ndrive.com>'
-    author_url = 'https://github.com/NDrive/sentry-mattermost'
+    author = "Andre Freitas <andre.freitas@ndrive.com>"
+    author_url = "https://github.com/NDrive/sentry-mattermost"
     project_conf_form = MattermostOptionsForm
 
     def is_configured(self, project):
-        return all((self.get_option(k, project) for k in ('webhook',)))
+        return all((self.get_option(k, project) for k in ("webhook",)))
 
     def notify(self, notification):
         project = notification.event.group.project
         if not self.is_configured(project):
             return
 
-        webhook = self.get_option('webhook', project)
+        webhook = self.get_option("webhook", project)
         payload = PayloadFactory.create(self, notification)
         return request(webhook, payload)
